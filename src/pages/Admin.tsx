@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserAvatar, LoadingSpinner } from '../components';
+import ConfirmModal from '../components/modals/ConfirmModal';
 import { clsx } from 'clsx';
 
 type Tab = 'analytics' | 'reports' | 'users' | 'posts';
@@ -80,6 +81,13 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('analytics');
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Modal state
+  const [confirmAction, setConfirmAction] = useState<{
+    type: 'ban_user' | 'unban_user' | 'delete_post' | null;
+    id: string | null;
+  }>({ type: null, id: null });
+
   const queryClient = useQueryClient();
 
   // Queries
@@ -117,7 +125,7 @@ export default function AdminDashboard() {
     mutationFn: (id: string) => usersApi.ban(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-      alert('Usuario bloqueado exitosamente');
+      setConfirmAction({ type: null, id: null });
     },
   });
 
@@ -125,7 +133,7 @@ export default function AdminDashboard() {
     mutationFn: (id: string) => usersApi.unban(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-      alert('Usuario desbloqueado exitosamente');
+      setConfirmAction({ type: null, id: null });
     },
   });
 
@@ -133,7 +141,7 @@ export default function AdminDashboard() {
     mutationFn: (id: string) => postsApi.adminDelete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'posts'] });
-      alert('Publicación eliminada correctamente');
+      setConfirmAction({ type: null, id: null });
     },
   });
 
@@ -297,17 +305,17 @@ export default function AdminDashboard() {
                          <span className="text-green-500 text-xs font-black uppercase">Activo</span>
                        }
                      </td>
-                     <td className="px-6 py-4">
+                      <td className="px-6 py-4">
                        {user.isActive ? (
                          <ActionButton 
-                           onClick={() => confirm('¿Banear usuario?') && banUserMutation.mutate(user.id)}
+                           onClick={() => setConfirmAction({ type: 'ban_user', id: user.id })}
                            label="Banear"
                            variant="danger"
                            icon={Ban}
                          />
                        ) : (
                          <ActionButton 
-                           onClick={() => unbanUserMutation.mutate(user.id)}
+                           onClick={() => setConfirmAction({ type: 'unban_user', id: user.id })}
                            label="Desbanear"
                            variant="success"
                          />
@@ -351,7 +359,7 @@ export default function AdminDashboard() {
                      </td>
                      <td className="px-6 py-4">
                         <ActionButton 
-                          onClick={() => confirm('¿Eliminar publicación permanentemente?') && deletePostMutation.mutate(post.id)}
+                          onClick={() => setConfirmAction({ type: 'delete_post', id: post.id })}
                           label="Eliminar"
                           variant="danger"
                         />
@@ -367,6 +375,35 @@ export default function AdminDashboard() {
           )}
         </motion.div>
       </AnimatePresence>
+
+      <ConfirmModal
+        isOpen={confirmAction.type !== null}
+        onClose={() => setConfirmAction({ type: null, id: null })}
+        onConfirm={() => {
+          if (!confirmAction.id) return;
+          if (confirmAction.type === 'ban_user') banUserMutation.mutate(confirmAction.id);
+          if (confirmAction.type === 'unban_user') unbanUserMutation.mutate(confirmAction.id);
+          if (confirmAction.type === 'delete_post') deletePostMutation.mutate(confirmAction.id);
+        }}
+        title={
+          confirmAction.type === 'ban_user' ? '¿Banear a este usuario?' :
+          confirmAction.type === 'unban_user' ? '¿Desbanear a este usuario?' :
+          '¿Eliminar publicación?'
+        }
+        message={
+          confirmAction.type === 'ban_user' ? 'El usuario no podrá acceder a su cuenta ni interactuar en la plataforma hasta que sea desbaneado.' :
+          confirmAction.type === 'unban_user' ? 'El usuario recuperará el acceso completo a su cuenta y podrá volver a interactuar en la plataforma.' :
+          'Esta acción es irreversible y eliminará el contenido permanentemente de la plataforma.'
+        }
+        confirmText={
+          confirmAction.type === 'ban_user' ? 'Banear Usuario' :
+          confirmAction.type === 'unban_user' ? 'Desbanear Usuario' :
+          'Eliminar'
+        }
+        cancelText="Cancelar"
+        isDestructive={confirmAction.type === 'ban_user' || confirmAction.type === 'delete_post'}
+        isLoading={banUserMutation.isPending || unbanUserMutation.isPending || deletePostMutation.isPending}
+      />
     </div>
   );
 }
